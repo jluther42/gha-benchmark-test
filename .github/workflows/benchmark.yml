@@ -85,7 +85,7 @@ jobs:
             "$VARIANT" "$ITERATION" "$step_ms" "${WORK_MS:-null}" > "result/$VARIANT-$ITERATION.json"
           cat "result/$VARIANT-$ITERATION.json"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: result-${{ matrix.variant }}-${{ matrix.iteration }}
           path: result/
@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           pattern: result-*
           path: results
@@ -106,7 +106,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/report.mjs --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --results results --out report
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: benchmark-report
           path: report/
