@@ -1,13 +1,9 @@
 name: Action language benchmark
 
 on:
-  workflow_dispatch:
-    inputs:
-      runs:
-        description: Runs per variant (1-60)
-        default: "20"
-        required: true
-
+  push:
+    branches:
+      - main
 permissions:
   contents: read
   actions: read
