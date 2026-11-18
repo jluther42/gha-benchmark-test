@@ -1,0 +1,38 @@
+name: Benchmark task (Python, composite)
+description: Same task as the TS action, as a composite action - setup-python, pip install, then run the script. Reuses ../py-docker/main.py so both Python variants run identical code.
+inputs:
+  data_file:
+    description: Path to the JSON records file
+    required: true
+  token:
+    description: GitHub token for the API call
+    required: false
+    default: ${{ github.token }}
+  cache:
+    description: "'true' to turn on setup-python's pip cache"
+    required: false
+    default: "false"
+outputs:
+  summary:
+    description: JSON summary
+    value: ${{ steps.run.outputs.summary }}
+  work_ms:
+    description: Milliseconds spent inside the action's own code
+    value: ${{ steps.run.outputs.work_ms }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.13"
+        cache: ${{ inputs.cache == 'true' && 'pip' || '' }}
+        # Workspace-relative: this action is only used from this repo's checkout.
+        cache-dependency-path: actions/py-docker/requirements.txt
+    - shell: bash
+      run: python -m pip install --disable-pip-version-check -q -r "$GITHUB_ACTION_PATH/../py-docker/requirements.txt"
+    - id: run
+      shell: bash
+      env:
+        INPUT_DATA_FILE: ${{ inputs.data_file }}
+        INPUT_TOKEN: ${{ inputs.token }}
+      run: python "$GITHUB_ACTION_PATH/../py-docker/main.py"

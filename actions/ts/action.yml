@@ -1,0 +1,18 @@
+name: Benchmark task (TypeScript)
+description: Summarise a JSON file and query the GitHub API. Bundled JavaScript run by the runner's own Node.
+inputs:
+  data_file:
+    description: Path to the JSON records file
+    required: true
+  token:
+    description: GitHub token for the API call
+    required: false
+    default: ${{ github.token }}
+outputs:
+  summary:
+    description: JSON summary
+  work_ms:
+    description: Milliseconds spent inside the action's own code
+runs:
+  using: node24
+  main: dist/index.js

@@ -1,0 +1,116 @@
+name: Action language benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Runs per variant (1-60)
+        default: "20"
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      iterations: ${{ steps.make.outputs.iterations }}
+    steps:
+      - id: make
+        env:
+          RUNS: ${{ inputs.runs }}
+        run: |
+          n=$(( RUNS < 1 ? 1 : (RUNS > 60 ? 60 : RUNS) ))
+          echo "iterations=$(seq -s, 1 "$n" | sed 's/^/[/; s/$/]/')" >> "$GITHUB_OUTPUT"
+
+  # Fills setup-python's pip cache once so the "cached" variant is a fair warm-cache test.
+  warm-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./actions/py-composite
+        with:
+          data_file: data/sample.json
+          cache: "true"
+
+  bench:
+    needs: [plan, warm-cache]
+    name: bench ${{ matrix.variant }} ${{ matrix.iteration }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [ts, py-docker, py-composite, py-composite-cached]
+        iteration: ${{ fromJSON(needs.plan.outputs.iterations) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Timer brackets ONLY the action step, including Docker build / setup-python / pip.
+      - name: start timer
+        run: echo "T0=$(date +%s%3N)" >> "$GITHUB_ENV"
+
+      - id: ts
+        if: matrix.variant == 'ts'
+        uses: ./actions/ts
+        with:
+          data_file: data/sample.json
+
+      - id: docker
+        if: matrix.variant == 'py-docker'
+        uses: ./actions/py-docker
+        with:
+          data_file: data/sample.json
+
+      - id: composite
+        if: matrix.variant == 'py-composite'
+        uses: ./actions/py-composite
+        with:
+          data_file: data/sample.json
+          cache: "false"
+
+      - id: cached
+        if: matrix.variant == 'py-composite-cached'
+        uses: ./actions/py-composite
+        with:
+          data_file: data/sample.json
+          cache: "true"
+
+      - name: stop timer
+        env:
+          VARIANT: ${{ matrix.variant }}
+          ITERATION: ${{ matrix.iteration }}
+          WORK_MS: ${{ steps.ts.outputs.work_ms || steps.docker.outputs.work_ms || steps.composite.outputs.work_ms || steps.cached.outputs.work_ms }}
+        run: |
+          step_ms=$(( $(date +%s%3N) - T0 ))
+          mkdir -p result
+          printf '{"variant":"%s","iteration":%s,"step_ms":%s,"work_ms":%s}\n' \
+            "$VARIANT" "$ITERATION" "$step_ms" "${WORK_MS:-null}" > "result/$VARIANT-$ITERATION.json"
+          cat "result/$VARIANT-$ITERATION.json"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: result-${{ matrix.variant }}-${{ matrix.iteration }}
+          path: result/
+          retention-days: 7
+
+  report:
+    needs: bench
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: result-*
+          path: results
+          merge-multiple: true
+      # Adds whole-job durations from the API, then writes report.html, results.csv and the summary.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/report.mjs --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --results results --out report
+      - uses: actions/upload-artifact@v5
+        with:
+          name: benchmark-report
+          path: report/
